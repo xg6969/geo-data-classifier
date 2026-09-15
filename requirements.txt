@@ -4,3 +4,4 @@ python-multipart
 pymupdf
 zhipuai
 python-docx
+openai
