@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Element Plus 样式与组件 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/element-plus/dist/index.full.js"></script>
+    <script src="https://unpkg.com/element-plus/dist/locale/zh-cn.js"></script>
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+    <!-- 引入 Axios -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <style>
+        body { background-color: #f0f2f5; font-family: "Microsoft YaHei", Arial, sans-serif; }
+        .el-table .cell { white-space: nowrap; }
+        .el-header-blue { background-color: #1890ff; }
+        /* 必填标签样式 */
+        .req-tag { border: 1px solid #fca5a5; background-color: #fef2f2; color: #ef4444; font-size: 10px; padding: 1px 4px; border-radius: 4px; margin-left: 4px; }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen flex flex-col" v-cloak>
+        <header class="el-header-blue text-white py-4 px-6 flex justify-between items-center shadow-md">
+            <div class="text-xl font-bold flex items-center gap-2">
+                <el-icon><DataLine/></el-icon>
+
+            </div>
+            <div class="text-sm">欢迎您</div>
+        </header>
+
+        <main class="flex-1 max-w-[1400px] w-full mx-auto py-8 px-4">
+            <div class="bg-white shadow-sm sm:rounded-lg">
+                <el-tabs v-model="activeTab" class="p-6" type="border-card">
+
+                    <!-- ================= 标签页 1：自动化数据分类 ================= -->
+                    <el-tab-pane label="1. 自动化数据分类重构" name="classify">
+                        <div class="max-w-3xl mx-auto py-8">
+                            <div class="text-center mb-8">
+                                <h2 class="text-2xl font-extrabold text-gray-900">数据自动分类与重构系统</h2>
+                                <p class="mt-2 text-gray-500">上传混合数据压缩包或文件夹，系统将自动剥离并生成标准化的目录结构</p>
+                            </div>
+                            <form @submit.prevent="submitClassification" class="space-y-6">
+                                <div><label class="block text-sm font-medium text-gray-700">重点目标区</label><input v-model="form.targetArea" required class="mt-1 block w-full border-gray-300 rounded-md border p-2"></div>
+                                <div><label class="block text-sm font-medium text-gray-700">矿种名称</label><input v-model="form.mineral" required class="mt-1 block w-full border-gray-300 rounded-md border p-2"></div>
+
+                                <div>
+                                    <div class="flex justify-between items-center mb-2">
+                                        <label class="block text-sm font-medium text-gray-700">数据来源</label>
+                                        <div class="flex space-x-4 text-sm">
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" v-model="uploadMode" value="zip" class="text-blue-600 focus:ring-blue-500">
+                                                <span class="ml-2">单压缩包 (.zip)</span>
+                                            </label>
+                                            <label class="inline-flex items-center cursor-pointer">
+                                                <input type="radio" v-model="uploadMode" value="folder" class="text-blue-600 focus:ring-blue-500">
+                                                <span class="ml-2">整个文件夹</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md bg-gray-50 hover:border-blue-500 transition-colors">
+                                        <div class="space-y-1 text-center">
+                                            <label class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 px-2 py-1">
+                                                <span>{{ uploadMode === 'zip' ? '点击选择压缩包 (.zip)' : '点击选择文件夹' }}</span>
+                                                <input v-if="uploadMode === 'zip'" type="file" @change="handleFileChange" accept=".zip" class="sr-only">
+                                                <input v-else type="file" @change="handleFileChange" webkitdirectory directory multiple class="sr-only">
+                                            </label>
+                                            <p class="text-sm text-green-600 font-semibold mt-2" v-if="selectedFiles.length > 0">
+                                                已选择: {{ uploadMode === 'zip' ? selectedFiles[0].name : '共 ' + selectedFiles.length + ' 个文件' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" :disabled="isClassifying" class="w-full flex justify-center py-3 px-4 rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400">
+                                    <span v-if="!isClassifying">开始智能分类重构</span>
+                                    <span v-else class="flex items-center"><el-icon class="is-loading mr-2"><Loading /></el-icon>处理中，请稍候...</span>
+                                </button>
+                            </form>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- ================= 标签页 2：智能解析与动态标注表格 ================= -->
+                    <el-tab-pane label="2. 文献智能解析与在线标注" name="annotation">
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="flex items-center gap-2">
+                                <el-select v-model="currentDataType" style="width: 150px" size="small">
+                                    <el-option label="公开文献" value="doc"></el-option>
+                                    <el-option label="图形图件" value="image"></el-option>
+                                </el-select>
+                                <el-badge class="ml-1" type="danger" :value="tableData.length"></el-badge>
+                                <el-upload action="#" :auto-upload="false" :show-file-list="false" :on-change="handleExtractUpload" accept=".pdf">
+                                    <el-button type="primary" size="small" :loading="isExtracting">
+                                        <el-icon class="mr-1"><Upload/></el-icon> 导入文献并解析
+                                    </el-button>
+                                </el-upload>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <el-button size="small" plain><el-icon class="mr-1"><Check/></el-icon>校验全部</el-button>
+
+                                <el-popover placement="bottom-end" title="标签项显示" :width="450" trigger="click">
+                                    <template #reference>
+                                        <el-button size="small" type="primary" plain>添加其他标签 <el-icon class="ml-1"><ArrowDown/></el-icon></el-button>
+                                    </template>
+                                    <div class="grid grid-cols-2 gap-y-3 gap-x-2 mt-2">
+                                        <el-checkbox v-for="col in dynamicColumns" :key="col.prop" v-model="col.visible" :disabled="col.required">
+                                            <span class="text-gray-700 text-sm">{{ col.label }}</span>
+                                            <span v-if="col.required" class="req-tag">必填</span>
+                                        </el-checkbox>
+                                    </div>
+                                </el-popover>
+
+                                <el-button size="small" plain>导出 <el-icon><ArrowDown/></el-icon></el-button>
+                            </div>
+                        </div>
+
+                        <!-- 动态渲染数据表格 -->
+                        <el-table :data="tableData" border style="width: 100%" v-loading="isExtracting" element-loading-text="大模型提取中，包含大量附加字段...">
+                            <el-table-column type="selection" width="50" align="center" fixed="left"></el-table-column>
+                            <el-table-column type="index" label="#" width="50" align="center" fixed="left"></el-table-column>
+
+                            <el-table-column prop="filename" label="文件名" width="220" show-overflow-tooltip fixed="left">
+                                <template #default="scope">
+                                    <span class="text-orange-500 mr-1">📄</span> {{ scope.row.filename }}
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('title')" label="标题 *" min-width="200">
+                                <template #default="scope"><el-input v-model="scope.row.title" size="small"></el-input></template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('doc_type')" label="类型 *" width="130">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.doc_type" size="small"><el-option v-for="i in options.doc_type" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('business_domain')" label="业务域" width="130">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.business_domain" size="small"><el-option v-for="i in options.domain" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('business_activity')" label="业务活动" width="150">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.business_activity" size="small"><el-option v-for="i in options.activity" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('object_type')" label="业务对象类型 *" width="140">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.object_type" size="small"><el-option v-for="i in options.obj_type" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('object_name')" label="业务对象名称 *" min-width="200">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.object_name" multiple filterable allow-create size="small"><el-option v-for="i in scope.row.object_name" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('resource_type')" label="资源类型 *" width="180">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.resource_type" multiple size="small"><el-option v-for="i in options.res_type" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('subject_classification')" label="学科分类" width="140">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.subject_classification" size="small"><el-option v-for="i in options.subject" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('authors')" label="作者/发明人" width="150">
+                                <template #default="scope"><el-input v-model="scope.row.authors" size="small"></el-input></template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('publish_year')" label="出版年份" width="100">
+                                <template #default="scope"><el-input v-model="scope.row.publish_year" size="small"></el-input></template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('publication_name')" label="出版物名称" width="150">
+                                <template #default="scope"><el-input v-model="scope.row.publication_name" size="small"></el-input></template>
+                            </el-table-column>
+
+                            <el-table-column v-if="isColVisible('security_level')" label="数据安全等级" width="130">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.security_level" size="small"><el-option v-for="i in options.security" :key="i" :label="i" :value="i"></el-option></el-select>
+                                </template>
+                            </el-table-column>
+
+                            <!-- 操作列 -->
+                            <el-table-column label="状态" width="70" align="center" fixed="right">
+                                <template #default="scope"><el-icon class="text-green-500 text-lg"><CircleCheckFilled/></el-icon></template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="70" align="center" fixed="right">
+                                <template #default="scope"><el-button type="danger" circle size="small" plain @click="removeRow(scope.$index)"><el-icon><Delete/></el-icon></el-button></template>
+                            </el-table-column>
+                        </el-table>
+
+                        <div class="flex justify-between items-center mt-6">
+                            <div class="flex items-center text-sm text-gray-500 w-1/3">
+                                <span class="mr-4">已标注: {{ tableData.length }} / {{ tableData.length }} 个文件</span>
+                            </div>
+                            <div class="flex gap-4">
+                                <el-button type="primary" @click="finalizeAnnotation">完成标注</el-button>
+                            </div>
+                        </div>
+
+                    </el-tab-pane>
+                </el-tabs>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive } = Vue;
+
+        const app = createApp({
+            setup() {
+                const activeTab = ref('classify'); // 默认展示标签页1
+
+                // --- 1. 分类模块逻辑 ---
+                const form = reactive({ targetArea: '', mineral: '' });
+                const uploadMode = ref('zip');
+                const selectedFiles = ref([]);
+                const isClassifying = ref(false);
+
+                // 监听模式切换，清空已选文件
+                Vue.watch(uploadMode, () => { selectedFiles.value = []; });
+
+                const handleFileChange = (e) => {
+                    selectedFiles.value = Array.from(e.target.files);
+                };
+
+                const submitClassification = async () => {
+                    if (selectedFiles.value.length === 0) {
+                        ElementPlus.ElMessage.warning(uploadMode.value === 'zip' ? '请选择ZIP压缩包' : '请选择包含数据的文件夹');
+                        return;
+                    }
+                    isClassifying.value = true;
+
+                    const formData = new FormData();
+                    formData.append('target_area', form.targetArea);
+                    formData.append('mineral', form.mineral);
+                    // 遍历追加所有文件
+                    selectedFiles.value.forEach(file => {
+                        formData.append('files', file);
+                    });
+
+                    try {
+                        const response = await fetch('/api/v1/classify', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || '分类请求失败');
+                        }
+
+                        const blob = await response.blob();
+                        const downloadUrl = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = `${form.targetArea}_${form.mineral}_分类结果.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(downloadUrl);
+                        document.body.removeChild(a);
+
+                        ElementPlus.ElMessage.success('自动化重构成功，文件已下载！');
+                    } catch (error) {
+                        ElementPlus.ElMessage.error(error.message);
+                    } finally {
+                        isClassifying.value = false;
+                    }
+                };
+
+                // --- 2. 在线标注与动态表格逻辑 ---
+                const currentDataType = ref('doc');
+                const isExtracting = ref(false);
+                const tableData = ref([]);
+
+                const options = reactive({
+                    doc_type: ['期刊论文', '会议论文', '学位论文', '政府报告', '专利', '专著', '技术标准', '其他'],
+                    domain: ['盆地评价', '区带评价', '甜点评价', '区块评价', '合作环境评价', '经济评价', '其他'],
+                    activity: ['盆地概况', '构造稳定性', '沉积特征', '烃源岩条件', '资源禀赋评价', '储层条件评价', '保存条件评价', '单井EUR预测', '其他'],
+                    obj_type: ['国家', '盆地', '区带', '甜点', '工区', '井', '项目', '区块', '露头'],
+                    res_type: ['煤层气', '页岩气', '页岩油', '致密气', '致密油', '常规油气', '天然气水合物'],
+                    subject: ['基础地质', '地球物理', '测录井', '岩石物理', '地球化学', '储层物性分析', '采油气工程', '石油经济与评价', '其他'],
+                    security: ['公开', '内部', '敏感', '重要', '核心']
+                });
+
+                const dynamicColumns = ref([
+                    { prop: 'title', label: '标题', required: true, visible: true },
+                    { prop: 'doc_type', label: '类型', required: true, visible: true },
+                    { prop: 'business_domain', label: '业务域', required: false, visible: true },
+                    { prop: 'business_activity', label: '业务活动', required: false, visible: true },
+                    { prop: 'object_type', label: '业务对象类型', required: true, visible: true },
+                    { prop: 'object_name', label: '业务对象名称', required: true, visible: true },
+                    { prop: 'resource_type', label: '资源类型', required: true, visible: true },
+                    { prop: 'subject_classification', label: '学科分类', required: false, visible: false },
+                    { prop: 'authors', label: '作者/发明人', required: false, visible: false },
+                    { prop: 'publish_year', label: '出版年份', required: false, visible: false },
+                    { prop: 'publication_name', label: '出版物名称', required: false, visible: false },
+                    { prop: 'security_level', label: '数据安全等级', required: false, visible: false }
+                ]);
+
+                const isColVisible = (prop) => {
+                    const col = dynamicColumns.value.find(c => c.prop === prop);
+                    return col ? col.visible : false;
+                };
+
+                const handleExtractUpload = async (file) => {
+                    const formData = new FormData();
+                    formData.append('file', file.raw);
+
+                    isExtracting.value = true;
+                    try {
+                        const response = await axios.post('/api/v1/extract/literature', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        const rowData = response.data;
+                        rowData.filename = file.name;
+                        tableData.value.push(rowData);
+                        ElementPlus.ElMessage.success(`《${file.name}》解析完成！`);
+                    } catch (error) {
+                        const msg = error.response?.data?.detail || error.message;
+                        ElementPlus.ElMessage.error(`解析失败: ${msg}`);
+                    } finally {
+                        isExtracting.value = false;
+                    }
+                };
+
+                const removeRow = (index) => { tableData.value.splice(index, 1); };
+                const finalizeAnnotation = () => { ElementPlus.ElMessage.success('所有标注数据已成功入库！'); };
+
+                return {
+                    activeTab, currentDataType, form, uploadMode, selectedFiles, isClassifying, handleFileChange, submitClassification,
+                    isExtracting, tableData, options, dynamicColumns, isColVisible, handleExtractUpload, removeRow, finalizeAnnotation
+                };
+            }
+        });
+
+        for (const [key, component] of Object.entries(ElementPlusIconsVue)) { app.component(key, component); }
+        app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+        app.mount('#app');
+    </script>
+</body>
+</html>
